@@ -1,0 +1,6 @@
+RESET  = "#[default]"
+PINK   = "#[bg=#ff79c6]"
+CYAN   = "#[bg=#8be9fd]"
+GREEN  = "#[bg=#50fa7b]"
+ORANGE = "#[bg=#ffb86c]"
+PURPLE = "#[bg=#bd93f9]"
