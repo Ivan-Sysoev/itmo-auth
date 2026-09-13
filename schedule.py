@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 
 import requests
 
 from itmo_auth import ItmoAuth
-from dracula_colors import *
+# from dracula_colors import *
 
 BASE_HEADERS = {
     "accept": "application/json, text/plain, */*",
@@ -35,7 +35,7 @@ def get_lessons(data):
     res = []
     lessons = data.get("data", [])[0].get("lessons", [])
     if not lessons:
-        raise RuntimeError("Cannot parse lessons")
+        return []
 
     for lesson in lessons:
         res.append({
@@ -47,7 +47,7 @@ def get_lessons(data):
 
     return res
 
-def get_next_lesson(lessons):
+def get_next_today_lesson(lessons):
     cur_time = datetime.now().time()
     for lesson in lessons:
         if cur_time <= lesson["start_time"]:
@@ -62,24 +62,38 @@ def format_lesson(lesson: dict | None) -> str:
     room = lesson["room"]
     start_time = lesson["start_time"].strftime("%H:%M")
 
-    return (
-        f"[ {name} ]"
-        f" {start_time}"
-        f" (ауд. {room})"
-    )
+    return f"[ {name} ] {start_time} " + (f"(ауд. {room})" if room else "(Online)")
+
+def get_next_lesson(date) -> dict | None:
+    target_date = date.strftime("%Y-%m-%d")
+    response    = make_request(target_date, target_date)
+    lessons     = get_lessons(response.json())
+
+    if not lessons:
+        return None
+    
+    if date == date.today():
+        return get_next_today_lesson(lessons)
+
+    # Taking first tomorrow lesson
+    return lessons[0]
 
 def main():
-    today = date.today().strftime("%Y-%m-%d")
+    today    = date.today()
+    tomorrow = date.today() + timedelta(days=1)
 
     try:
-        response = make_request(today, today)
-        lessons = get_lessons(response.json())
+        # Trying for today
+        lesson_output = get_next_lesson(today)
+        
+        # Trying for tomorrow
+        if not lesson_output:
+            lesson_output = get_next_lesson(tomorrow)
+
+        print(format_lesson(lesson_output))
+
     except Exception as e:
         print(e)
-        return
-
-    next_lesson = get_next_lesson(lessons)
-    print(format_lesson(next_lesson))
 
 if __name__ == "__main__":
     main()
