@@ -23,11 +23,12 @@ from pathlib import Path
 
 import requests
 
-TOKEN_URL = "https://id.itmo.ru/auth/realms/itmo/protocol/openid-connect/token"
-CLIENT_ID = "student-personal-cabinet"
-PROJECT_DIR = Path(__file__).resolve().parent 
-TOKEN_FILE = PROJECT_DIR / ".itmo_tokens.json"
-SAFETY_MARGIN_SEC = 30  # обновляем чуть раньше формального истечения
+from constants import (
+    TOKEN_URL,
+    CLIENT_ID,
+    TOKEN_FILE,
+    SAFETY_MARGIN_SEC
+)
 
 class ItmoAuth:
     def __init__(self, token_file: Path = TOKEN_FILE):

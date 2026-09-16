@@ -1,35 +1,71 @@
 #!/usr/bin/env python
-from datetime import date, time, datetime, timedelta
+from constants import (
+    BASE_HEADERS,
+    SCHEDULE_URL,
+    SCHEDULE_EXPIRE_PERIOD,
+    SCHEDULE_CACHE_PATH
+)
 
+from datetime import (
+    date,
+    time,
+    datetime,
+    timedelta
+)
+
+import json
 import requests
 
-from itmo_auth import ItmoAuth
-# from dracula_colors import *
-
-BASE_HEADERS = {
-    "accept": "application/json, text/plain, */*",
-    "accept-language": "ru",
-    "cache-control": "no-cache",
-    "pragma": "no-cache",
-    "referer": "https://my.itmo.ru/",
-    "user-agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
-    ),
-}
-
-SCHEDULE_URL = "https://my.itmo.ru/api/schedule/schedule/personal"
+from itmo_auth import (
+    ItmoAuth,
+)
 
 auth = ItmoAuth()
 
+def get_cached_response():
+    if not SCHEDULE_CACHE_PATH.exists():
+        return None
+
+    with open(SCHEDULE_CACHE_PATH, 'r', encoding='utf-8') as ifile:
+        json_data = json.load(ifile)
+        cache_expire_time = datetime.fromisoformat(json_data.get("cache_expire_time"))
+        
+        if (datetime.now() >= cache_expire_time):
+            return None
+        
+        return json_data
+
+def write_schedule_cache(json_data):
+    cache_expire_time = datetime.now() + SCHEDULE_EXPIRE_PERIOD
+    json_data["cache_expire_time"] = cache_expire_time.isoformat()
+    with open(SCHEDULE_CACHE_PATH, 'w', encoding='utf-8') as ofile:
+        json.dump(json_data, ofile, ensure_ascii=False, indent=4)
+    
 def make_request(date_start: str, date_end: str):
-    headers = {**BASE_HEADERS, "authorization": f"Bearer {auth.get_access_token()}"}
-    params = {"date_start": date_start, "date_end": date_end}
+    print("Making requests")
+    headers = {
+        **BASE_HEADERS,
+        "authorization": f"Bearer {auth.get_access_token()}",
+    }
+
+    params = {
+        "date_start": date_start,
+        "date_end": date_end,
+    }
+
     try:
-        response = requests.get(SCHEDULE_URL, params=params, headers=headers, timeout=10)
+        json_response = requests.get(SCHEDULE_URL, params=params, headers=headers, timeout=10)
     except requests.RequestException as e:
         raise RuntimeError(f"Network Error: {e}")
-    return response
+
+    return json_response.json()
+
+def get_schedule(date_start: str, date_end: str):
+    json_response = get_cached_response()
+    if not json_response:
+        json_response = make_request(date_start, date_end)
+        write_schedule_cache(json_response)
+    return json_response
 
 def get_lessons(data):
     res = []
@@ -65,9 +101,9 @@ def format_lesson(lesson: dict | None) -> str:
     return f"[ {name} ] {start_time} " + (f"(ауд. {room})" if room else "(Online)")
 
 def get_next_lesson(date) -> dict | None:
-    target_date = date.strftime("%Y-%m-%d")
-    response    = make_request(target_date, target_date)
-    lessons     = get_lessons(response.json())
+    target_date   = date.strftime("%Y-%m-%d")
+    json_response = get_schedule(target_date, target_date)
+    lessons       = get_lessons(json_response)
 
     if not lessons:
         return None
@@ -82,18 +118,14 @@ def main():
     today    = date.today()
     tomorrow = date.today() + timedelta(days=1)
 
-    try:
-        # Trying for today
-        lesson_output = get_next_lesson(today)
-        
-        # Trying for tomorrow
-        if not lesson_output:
-            lesson_output = get_next_lesson(tomorrow)
+    # Trying for today
+    lesson_output = get_next_lesson(today)
+    
+    # Trying for tomorrow
+    if not lesson_output:
+        lesson_output = get_next_lesson(tomorrow)
 
-        print(format_lesson(lesson_output))
-
-    except Exception as e:
-        print(e)
+    print(format_lesson(lesson_output))
 
 if __name__ == "__main__":
     main()
