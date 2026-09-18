@@ -3,14 +3,15 @@ from constants import (
     BASE_HEADERS,
     SCHEDULE_URL,
     SCHEDULE_EXPIRE_PERIOD,
-    SCHEDULE_CACHE_PATH
+    SCHEDULE_CACHE_PATH,
+    TODAY,
+    TOMORROW
 )
 
 from datetime import (
-    date,
     time,
     datetime,
-    timedelta
+    date
 )
 
 import json
@@ -22,35 +23,37 @@ from itmo_auth import (
 
 auth = ItmoAuth()
 
-def get_cached_response():
+def get_cached_response(target_date: date):
     if not SCHEDULE_CACHE_PATH.exists():
         return None
 
     with open(SCHEDULE_CACHE_PATH, 'r', encoding='utf-8') as ifile:
         json_data = json.load(ifile)
-        cache_expire_time = datetime.fromisoformat(json_data.get("cache_expire_time"))
-        
-        if (datetime.now() >= cache_expire_time):
+        cache_last_update_time = datetime.fromisoformat(json_data.get("cache_last_update_time"))
+        cache_expire_time = cache_last_update_time + SCHEDULE_EXPIRE_PERIOD
+
+        if (target_date != cache_last_update_time.date() or datetime.now() >= cache_expire_time):
             return None
         
         return json_data
 
 def write_schedule_cache(json_data):
-    cache_expire_time = datetime.now() + SCHEDULE_EXPIRE_PERIOD
-    json_data["cache_expire_time"] = cache_expire_time.isoformat()
+    cache_last_update_time = datetime.now()
+    json_data["cache_last_update_time"] = cache_last_update_time.isoformat()
     with open(SCHEDULE_CACHE_PATH, 'w', encoding='utf-8') as ofile:
         json.dump(json_data, ofile, ensure_ascii=False, indent=4)
     
-def make_request(date_start: str, date_end: str):
-    print("Making requests")
+def make_request(target_date: date):
     headers = {
         **BASE_HEADERS,
         "authorization": f"Bearer {auth.get_access_token()}",
     }
 
+    str_date = target_date.strftime("%Y-%m-%d")
+
     params = {
-        "date_start": date_start,
-        "date_end": date_end,
+        "date_start": str_date,
+        "date_end": str_date,
     }
 
     try:
@@ -59,13 +62,6 @@ def make_request(date_start: str, date_end: str):
         raise RuntimeError(f"Network Error: {e}")
 
     return json_response.json()
-
-def get_schedule(date_start: str, date_end: str):
-    json_response = get_cached_response()
-    if not json_response:
-        json_response = make_request(date_start, date_end)
-        write_schedule_cache(json_response)
-    return json_response
 
 def get_lessons(data):
     res = []
@@ -100,31 +96,38 @@ def format_lesson(lesson: dict | None) -> str:
 
     return f"[ {name} ] {start_time} " + (f"(ауд. {room})" if room else "(Online)")
 
-def get_next_lesson(date) -> dict | None:
-    target_date   = date.strftime("%Y-%m-%d")
-    json_response = get_schedule(target_date, target_date)
-    lessons       = get_lessons(json_response)
-
+def get_next_lesson(lessons, today: bool) -> dict | None:
     if not lessons:
         return None
     
-    if date == date.today():
-        return get_next_today_lesson(lessons)
+    if today:
+        cur_time = datetime.now().time()
+        for lesson in lessons:
+            if cur_time <= lesson["start_time"]:
+                return lesson
+        return None
 
     # Taking first tomorrow lesson
     return lessons[0]
 
+def get_schedule():
+    for target_date in (TODAY, TOMORROW):
+        cache_response = get_cached_response(target_date)
+
+        if not cache_response:
+            json_response = make_request(target_date)
+
+            lessons = get_lessons(json_response)
+            next_lesson = get_next_lesson(lessons, target_date == TODAY)
+
+            if next_lesson:
+                write_schedule_cache(json_response)
+                return next_lesson
+
+    return None
+
 def main():
-    today    = date.today()
-    tomorrow = date.today() + timedelta(days=1)
-
-    # Trying for today
-    lesson_output = get_next_lesson(today)
-    
-    # Trying for tomorrow
-    if not lesson_output:
-        lesson_output = get_next_lesson(tomorrow)
-
+    lesson_output = get_schedule()
     print(format_lesson(lesson_output))
 
 if __name__ == "__main__":

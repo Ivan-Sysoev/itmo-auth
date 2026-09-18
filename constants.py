@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, date
 from pathlib import Path
 
 # itmo_auth
@@ -24,3 +24,6 @@ BASE_HEADERS = {
 SCHEDULE_URL           = "https://my.itmo.ru/api/schedule/schedule/personal"
 SCHEDULE_EXPIRE_PERIOD = timedelta(hours=3)
 SCHEDULE_CACHE_PATH    = PROJECT_DIR / "schedule_cache.json"
+
+TODAY    = date.today()
+TOMORROW = date.today() + timedelta(days=1)

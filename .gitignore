@@ -219,3 +219,4 @@ __marimo__/
 
 # my.itmo credentials
 *.itmo_tokens.json
+*.json
