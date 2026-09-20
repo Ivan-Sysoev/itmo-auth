@@ -1,53 +1,46 @@
 #!/usr/bin/env python
-from types import ClassMethodDescriptorType
+import json
+from datetime import date, datetime, time
+from typing import Dict, List, Tuple
+
+import requests
+
 from constants import (
     BASE_HEADERS,
-    SCHEDULE_URL,
-    SCHEDULE_EXPIRE_PERIOD,
     SCHEDULE_CACHE_PATH,
+    SCHEDULE_EXPIRE_PERIOD,
+    SCHEDULE_URL,
     TODAY,
-    TOMORROW
+    TOMORROW,
+    CacheState,
 )
 
-from datetime import (
-    time,
-    datetime,
-    date
-)
-
-import json
-import requests
-import enum
-
-from itmo_auth import (
-    ItmoAuth,
-)
+from itmo_auth import ItmoAuth
 
 auth = ItmoAuth()
 
-class CacheState(enum.Enum):
-    EXPIRED        = 0
-    DIFFERENT_DATE = 1
-
-def get_cached_response(target_date: date):
+def get_cached_response(target_date: date) -> Tuple[ Dict | None, CacheState | None ]:
     if not SCHEDULE_CACHE_PATH.exists():
         return (None, CacheState.EXPIRED)
 
     with open(SCHEDULE_CACHE_PATH, 'r', encoding='utf-8') as ifile:
         json_data = json.load(ifile)
         cache_last_update_time = datetime.fromisoformat(json_data.get("cache_last_update_time"))
-        cache_target_date      = datetime.fromisoformat(json_data.get("cache_target_date"))
+        cache_target_date      = datetime.fromisoformat(json_data.get("cache_target_date")).date()
         cache_expire_time      = cache_last_update_time + SCHEDULE_EXPIRE_PERIOD
 
-        if (target_date != cache_target_date.date()):
-            return (None, CacheState.DIFFERENT_DATE)
-
-        if (datetime.now() >= cache_expire_time):
+        if (datetime.now() >= cache_expire_time or target_date > cache_target_date):
             return (None, CacheState.EXPIRED)
+
+        if (target_date != cache_target_date):
+            return (None, CacheState.DIFFERENT_DATE)
 
         return (json_data, None)
 
-def write_schedule_cache(json_data, target_date: date):
+def write_schedule_cache(json_data: Dict | None, target_date: date) -> None:
+    if not json_data:
+        return
+
     cache_last_update_time              = datetime.now()
     json_data["cache_last_update_time"] = cache_last_update_time.isoformat()
     json_data["cache_target_date"]      = target_date.isoformat()
@@ -55,7 +48,7 @@ def write_schedule_cache(json_data, target_date: date):
     with open(SCHEDULE_CACHE_PATH, 'w', encoding='utf-8') as ofile:
         json.dump(json_data, ofile, ensure_ascii=False, indent=4)
     
-def make_request(target_date: date):
+def make_request(target_date: date) -> Dict:
     headers = {
         **BASE_HEADERS,
         "authorization": f"Bearer {auth.get_access_token()}",
@@ -75,7 +68,7 @@ def make_request(target_date: date):
 
     return json_response.json()
 
-def get_lessons(data):
+def get_lessons(data) -> List[Dict]:
     res = []
     lessons = data.get("data", [])[0].get("lessons", [])
     if not lessons:
@@ -91,13 +84,6 @@ def get_lessons(data):
 
     return res
 
-def get_next_today_lesson(lessons):
-    cur_time = datetime.now().time()
-    for lesson in lessons:
-        if cur_time <= lesson["start_time"]:
-            return lesson
-    return None
-
 def format_lesson(lesson: dict | None, today: bool) -> str:
     if not lesson:
         return "There is no next lesson"
@@ -108,7 +94,7 @@ def format_lesson(lesson: dict | None, today: bool) -> str:
 
     return ("[Завтра]" if not today else "") + f"[ {name} ] {start_time} " + (f"(ауд. {room})" if room else "(Online)")
 
-def find_next_lesson(lessons, today: bool) -> dict | None:
+def find_next_lesson(lessons: List[Dict], today: bool) -> dict | None:
     if not lessons:
         return None
     
@@ -122,7 +108,7 @@ def find_next_lesson(lessons, today: bool) -> dict | None:
     # Taking first tomorrow lesson
     return lessons[0]
 
-def get_next_lesson():
+def get_next_lesson() -> str:
     for target_date in (TODAY, TOMORROW):
         response, cache_state = get_cached_response(target_date)
 
@@ -143,6 +129,8 @@ def get_next_lesson():
     return "There is no next lesson"
 
 def main():
+    # response, cache_state = get_cached_response(TODAY)
+    # print(cache_state)
     print(get_next_lesson())
 
 if __name__ == "__main__":

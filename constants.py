@@ -1,4 +1,5 @@
 from datetime import timedelta, date
+import enum
 from pathlib import Path
 
 # itmo_auth
@@ -25,5 +26,9 @@ SCHEDULE_URL           = "https://my.itmo.ru/api/schedule/schedule/personal"
 SCHEDULE_EXPIRE_PERIOD = timedelta(hours=3)
 SCHEDULE_CACHE_PATH    = PROJECT_DIR / "schedule_cache.json"
 
+class CacheState(enum.Enum):
+    EXPIRED        = 0
+    DIFFERENT_DATE = 1
+
 TODAY    = date.today()
-TOMORROW = date.today() + timedelta(days=1)
+TOMORROW = TODAY + timedelta(days=1)
