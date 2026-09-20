@@ -112,17 +112,19 @@ def get_next_lesson(lessons, today: bool) -> dict | None:
 
 def get_schedule():
     for target_date in (TODAY, TOMORROW):
-        cache_response = get_cached_response(target_date)
+        update_cache = False
+        response = get_cached_response(target_date)
+        if not response:
+            update_cache = True
+            response = make_request(target_date)
 
-        if not cache_response:
-            json_response = make_request(target_date)
+        lessons = get_lessons(response)
+        next_lesson = get_next_lesson(lessons, target_date == TODAY)
 
-            lessons = get_lessons(json_response)
-            next_lesson = get_next_lesson(lessons, target_date == TODAY)
-
-            if next_lesson:
-                write_schedule_cache(json_response)
-                return next_lesson
+        if next_lesson:
+            if update_cache:
+                write_schedule_cache(response)
+            return next_lesson
 
     return None
 
