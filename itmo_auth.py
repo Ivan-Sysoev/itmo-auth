@@ -24,11 +24,12 @@ from pathlib import Path
 import requests
 
 from constants import (
-    TOKEN_URL,
     CLIENT_ID,
+    SAFETY_MARGIN_SEC,
     TOKEN_FILE,
-    SAFETY_MARGIN_SEC
+    TOKEN_URL,
 )
+
 
 class ItmoAuth:
     def __init__(self, token_file: Path = TOKEN_FILE):

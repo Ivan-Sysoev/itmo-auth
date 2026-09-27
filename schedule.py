@@ -14,6 +14,7 @@ from constants import (
     TODAY,
     TOMORROW,
     CacheState,
+    Messages,
 )
 from itmo_auth import ItmoAuth
 
@@ -69,10 +70,7 @@ def make_request(target_date: date) -> dict:
         "date_end": str_date,
     }
 
-    try:
-        json_response = requests.get(SCHEDULE_URL, params=params, headers=headers, timeout=10)
-    except requests.RequestException as e:
-        raise RuntimeError(f"Network Error: {e}")
+    json_response = requests.get(SCHEDULE_URL, params=params, headers=headers, timeout=10)
 
     return json_response.json()
 
@@ -132,7 +130,10 @@ def get_next_lesson() -> str:
             continue
 
         if cache_state == CacheState.EXPIRED:
-            response = make_request(target_date)
+            try:
+                response = make_request(target_date)
+            except requests.RequestException:
+                return Messages.NETWORK_ERROR
 
         lessons = get_lessons(response)
         next_lesson = find_next_lesson(lessons, target_date == TODAY)
@@ -143,7 +144,7 @@ def get_next_lesson() -> str:
             return format_lesson(next_lesson, target_date == TODAY)
 
     write_schedule_cache(None, target_date)
-    return "Сегодня и завтра не пар"
+    return Messages.NO_LESSONS_MSG
 
 def main():
     print(get_next_lesson())
