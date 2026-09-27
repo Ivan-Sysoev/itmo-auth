@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 import json
 from datetime import date, datetime, time
-from typing import Dict, List, Tuple
 
 import requests
 
 from constants import (
+    ABBREVIATIONS,
     BASE_HEADERS,
+    LOCAL_TIMEZONE,
     SCHEDULE_CACHE_PATH,
     SCHEDULE_EXPIRE_PERIOD,
     SCHEDULE_URL,
@@ -14,22 +15,25 @@ from constants import (
     TOMORROW,
     CacheState,
 )
-
 from itmo_auth import ItmoAuth
 
 auth = ItmoAuth()
 
-def get_cached_response(target_date: date) -> Tuple[ Dict | None, CacheState | None ]:
+def get_cached_response(target_date: date) -> tuple[ dict | None, CacheState | None ]:
     if not SCHEDULE_CACHE_PATH.exists():
         return (None, CacheState.EXPIRED)
 
     with open(SCHEDULE_CACHE_PATH, 'r', encoding='utf-8') as ifile:
-        json_data = json.load(ifile)
-        cache_last_update_time = datetime.fromisoformat(json_data.get("cache_last_update_time"))
-        cache_target_date      = datetime.fromisoformat(json_data.get("cache_target_date")).date()
-        cache_expire_time      = cache_last_update_time + SCHEDULE_EXPIRE_PERIOD
+        try:
+            json_data = json.load(ifile)
+        except json.decoder.JSONDecodeError:
+            return (None, CacheState.EXPIRED) 
 
-        if (datetime.now() >= cache_expire_time or target_date > cache_target_date):
+        cache_created_at = datetime.fromisoformat(json_data.get("cache_created_at"))
+        cache_target_date = datetime.fromisoformat(json_data.get("cache_target_date")).date()
+        cache_expire_time = cache_created_at + SCHEDULE_EXPIRE_PERIOD
+
+        if (datetime.now(tz=LOCAL_TIMEZONE) >= cache_expire_time or target_date > cache_target_date):
             return (None, CacheState.EXPIRED)
 
         if (target_date != cache_target_date):
@@ -37,18 +41,22 @@ def get_cached_response(target_date: date) -> Tuple[ Dict | None, CacheState | N
 
         return (json_data, None)
 
-def write_schedule_cache(json_data: Dict | None, target_date: date) -> None:
+def write_schedule_cache(json_data: dict | None, target_date: date) -> None:
     if not json_data:
-        return
+        json_data = {
+            "code": 0,
+            "data": [],
+            "message": None,
+        }
 
-    cache_last_update_time              = datetime.now()
-    json_data["cache_last_update_time"] = cache_last_update_time.isoformat()
-    json_data["cache_target_date"]      = target_date.isoformat()
+    cache_created_at = datetime.now(tz=LOCAL_TIMEZONE)
+    json_data["cache_created_at"] = cache_created_at.isoformat()
+    json_data["cache_target_date"] = target_date.isoformat()
 
     with open(SCHEDULE_CACHE_PATH, 'w', encoding='utf-8') as ofile:
         json.dump(json_data, ofile, ensure_ascii=False, indent=4)
     
-def make_request(target_date: date) -> Dict:
+def make_request(target_date: date) -> dict:
     headers = {
         **BASE_HEADERS,
         "authorization": f"Bearer {auth.get_access_token()}",
@@ -68,38 +76,46 @@ def make_request(target_date: date) -> Dict:
 
     return json_response.json()
 
-def get_lessons(data) -> List[Dict]:
-    res = []
-    lessons = data.get("data", [])[0].get("lessons", [])
+def get_lessons(data) -> list[dict]:
+    data = data.get("data", [])
+    if len(data) == 0:
+        return []
+
+    lessons = data[0].get("lessons", [])
+
     if not lessons:
         return []
 
-    for lesson in lessons:
-        res.append({
+    return [
+        {
             "name": lesson.get("subject"),
             "start_time": time.fromisoformat(lesson.get("time_start")),
             "end_time": time.fromisoformat(lesson.get("time_end")),
-            "room": lesson.get("room"),
-        })
+            "room": lesson.get("room")
+        }
+        for lesson in lessons
+    ]
 
-    return res
+def use_abbreviation(name: str):
+    return ABBREVIATIONS.get(name, name)
 
 def format_lesson(lesson: dict | None, today: bool) -> str:
     if not lesson:
-        return "There is no next lesson"
+        return "Сегодня и завтра не пар"
 
     name = lesson["name"]
     room = lesson["room"]
     start_time = lesson["start_time"].strftime("%H:%M")
 
+    name = use_abbreviation(name)
     return ("[Завтра]" if not today else "") + f"[ {name} ] {start_time} " + (f"(ауд. {room})" if room else "(Online)")
 
-def find_next_lesson(lessons: List[Dict], today: bool) -> dict | None:
+def find_next_lesson(lessons: list[dict], today: bool) -> dict | None:
     if not lessons:
         return None
     
     if today:
-        cur_time = datetime.now().time()
+        cur_time = datetime.now(tz=LOCAL_TIMEZONE).time()
         for lesson in lessons:
             if cur_time <= lesson["start_time"]:
                 return lesson
@@ -126,11 +142,10 @@ def get_next_lesson() -> str:
                 write_schedule_cache(response, target_date)
             return format_lesson(next_lesson, target_date == TODAY)
 
-    return "There is no next lesson"
+    write_schedule_cache(None, target_date)
+    return "Сегодня и завтра не пар"
 
 def main():
-    # response, cache_state = get_cached_response(TODAY)
-    # print(cache_state)
     print(get_next_lesson())
 
 if __name__ == "__main__":

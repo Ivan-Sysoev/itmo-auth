@@ -1,5 +1,5 @@
-from datetime import timedelta, date
 import enum
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # itmo_auth
@@ -30,5 +30,12 @@ class CacheState(enum.Enum):
     EXPIRED        = 0
     DIFFERENT_DATE = 1
 
-TODAY    = date.today()
+# Europe/Moscow
+LOCAL_TIMEZONE = timezone(timedelta(hours=3))
+
+TODAY = datetime.now(tz=LOCAL_TIMEZONE).date()
 TOMORROW = TODAY + timedelta(days=1)
+
+ABBREVIATIONS = {
+    "Объектно-ориентированное проектирование и программирование на C#": "ООП на C#"
+}
